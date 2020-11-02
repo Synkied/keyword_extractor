@@ -2,4 +2,4 @@
 pip install -r requirements.txt
 
 # Launch
-python pdf_extract.py {PATH_TO_PDFS_DIRECTORY}
+python keyword_extract.py {PATH_TO_FILE_OR_DIRECTORY}
