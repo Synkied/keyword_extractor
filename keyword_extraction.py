@@ -1,21 +1,42 @@
 import argparse
 import mimetypes
 import os
-
+import re
 
 from constants import HANDLED_FILE_TYPES
+from constants import UNWANTED_CHARS_REGEX
+
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
 
 
 class KeyWordExtractor():
     """
     A keyword extractor.
     """
+
+    def __init__(self, path, language):
+        texts_agg = self.text_extract(path)
+        self.lang_stopwords = []
+        try:
+            self.lang_stopwords = stopwords.words(language)
+        except OSError:
+            self.lang_stopwords = []
+
+        self.text_words_count = self.keyword_extract(texts_agg)
+        self.notable_keywords = self.keywords_analyze(self.text_words_count)
+        print(self)
+
+    def __repr__(self):
+        return 'Notable keywords: %s' % (self.notable_keywords)
+
     def text_extract(self, path):
         """
         Extracting text from pdfs in a directory
         :str:directory, path to a directory containing pdfs
         """
-        texts = {}
+
+        texts_agg = {}
 
         if os.path.isdir(path):
             for directory_root, sub_directories, files in os.walk(path):
@@ -26,21 +47,72 @@ class KeyWordExtractor():
                         relative_filepath
                     )
                     file_type = self.determine_file_type(filepath)
-                    texts.setdefault(file_type, {})
+                    texts_agg.setdefault(file_type, {})
 
                     extracted_text = self.agg_datas(file_type, filepath)
                     filename = os.path.split(filepath)[-1]
-                    texts[filename] = extracted_text
+                    texts_agg[filename] = extracted_text
 
         elif os.path.isfile(path):
             filename = os.path.split(path)[-1]
             file_type = self.determine_file_type(path)
             extracted_text = self.agg_datas(file_type, path)
-            texts[filename] = extracted_text
+            texts_agg[filename] = extracted_text
 
-        print(texts)
+        return texts_agg
 
-        # walk the given directory, to search for pdf files
+    def keyword_extract(self, texts_agg):
+        text_words_count = {}
+
+        for f in texts_agg:
+            text_words_count[f] = {}
+            for page in texts_agg[f]:
+                text_words_count[f][page] = {}
+                page_text = self.clean_text(texts_agg[f][page])
+                page_word_count = self.word_counter(page_text)
+
+                text_words_count[f][page] = page_word_count
+
+        return text_words_count
+
+    def keywords_analyze(self, keywords_extract):
+        notable_keywords = {}
+
+        for f in keywords_extract:
+            for page in keywords_extract[f]:
+                page_words = keywords_extract[f][page]
+                counters = page_words.values()
+                max_counter = max(counters)
+                min_counter = min(counters)
+                mean = (max_counter + min_counter) / 2
+
+                for k, v in page_words.items():
+                    if v > mean:
+                        notable_keywords[k] = v
+
+        return notable_keywords
+
+    def clean_text(self, text):
+        text = re.sub(UNWANTED_CHARS_REGEX, ' ', text)
+        words = word_tokenize(text)
+        result = ' '.join(
+            [
+                word for word in words
+                if word.lower() not in self.lang_stopwords
+            ]
+        )
+        return result
+
+    def word_counter(self, text):
+        words_count = {}
+        for word in word_tokenize(text):
+            word = word.lower()
+            if word not in words_count.keys():
+                words_count[word] = 1
+            else:
+                words_count[word] += 1
+
+        return words_count
 
     def agg_datas(self, file_type, filepath):
         if file_type in HANDLED_FILE_TYPES.keys():
@@ -48,6 +120,8 @@ class KeyWordExtractor():
             text = handler.extract_text(filepath)
 
             return text
+
+        return {}
 
     def determine_file_type(self, path):
         """
@@ -59,8 +133,6 @@ class KeyWordExtractor():
         if file_type:
             file_type_name = file_type.split('application/')[-1]
 
-        print(path, file_type_name)
-
         return file_type_name
 
 
@@ -70,16 +142,18 @@ if __name__ == '__main__':
     pdf_directory: path to a directory
     """
     parser = argparse.ArgumentParser()
+    parser.add_argument('-l', default="english")
     group = parser.add_mutually_exclusive_group()
     group.add_argument('-d')
     group.add_argument('-f')
     args = parser.parse_args()
 
-    directory = args.d
-    file = args.f
+    path = ''
+    language = args.l
 
-    kwext = KeyWordExtractor()
-    if directory:
-        kwext.text_extract(directory)
-    if file:
-        kwext.text_extract(file)
+    if args.d:
+        path = args.d
+    if args.f:
+        path = args.f
+
+    kwext = KeyWordExtractor(path, language)
