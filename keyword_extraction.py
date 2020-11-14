@@ -24,7 +24,9 @@ class KeyWordExtractor():
             self.lang_stopwords = []
 
         self.text_words_count = self.keyword_extract(texts_agg)
-        self.notable_keywords = self.keywords_analyze(self.text_words_count)
+        result = self.keywords_analyze(self.text_words_count)
+
+        self.notable_keywords = result['notable_keywords']
         print(self)
 
     def __repr__(self):
@@ -77,20 +79,51 @@ class KeyWordExtractor():
 
     def keywords_analyze(self, keywords_extract):
         notable_keywords = {}
+        words = {}
+        per_page_notable_keywords = {}
+        means = []
 
         for f in keywords_extract:
+            per_page_notable_keywords[f] = {}
             for page in keywords_extract[f]:
+                per_page_notable_keywords[f][page] = {}
                 page_words = keywords_extract[f][page]
                 counters = page_words.values()
-                max_counter = max(counters)
-                min_counter = min(counters)
-                mean = (max_counter + min_counter) / 2
+                page_max_counter = max(counters)
+                page_min_counter = min(counters)
+                page_mean = (page_max_counter + page_min_counter) / 2
+                means.append(page_mean)
 
                 for k, v in page_words.items():
-                    if v > mean:
-                        notable_keywords[k] = v
+                    if k not in words.keys():
+                        words[k] = v
+                    else:
+                        words[k] += v
 
-        return notable_keywords
+                    if v > page_mean:
+                        per_page_notable_keywords[f][page][k] = v
+
+        total_max = max(means)
+        total_min = min(means)
+        total_mean = (total_max + total_min) / 2
+
+        for k, v in words.items():
+            if v > total_mean:
+                notable_keywords[k] = v
+
+        sorted_notable_keywords = {
+            k: v for k, v in sorted(
+                notable_keywords.items(),
+                key=lambda item: item[1],
+                reverse=True
+            )
+        }
+
+        result = {
+            'notable_keywords': sorted_notable_keywords,
+            'per_page_notable_keywords': per_page_notable_keywords,
+        }
+        return result
 
     def clean_text(self, text):
         text = re.sub(UNWANTED_CHARS_REGEX, ' ', text)
